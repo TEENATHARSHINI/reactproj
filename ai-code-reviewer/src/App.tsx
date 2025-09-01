@@ -1,14 +1,16 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import Header from './components/Header';
 import CodeEditor from './components/CodeEditor';
 import ReviewPanel from './components/ReviewPanel';
-import { CodeReview, Language } from './types';
+import { CodeReview, Language, RefactoringSuggestion } from './types';
 
 function App() {
   const [code, setCode] = useState<string>('');
   const [language, setLanguage] = useState<Language>('javascript');
   const [reviews, setReviews] = useState<CodeReview[]>([]);
+  const [refactoringSuggestions, setRefactoringSuggestions] = useState<RefactoringSuggestion[]>([]);
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [isRefactoring, setIsRefactoring] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleCodeChange = (newCode: string) => {
@@ -18,6 +20,81 @@ function App() {
   const handleLanguageChange = (newLanguage: Language) => {
     setLanguage(newLanguage);
   };
+
+  const generateRefactoringSuggestions = useCallback((code: string, lang: Language): RefactoringSuggestion[] => {
+    // In a real app, this would be an API call to an AI service
+    // For now, we'll generate some realistic-looking suggestions
+    const suggestions: RefactoringSuggestion[] = [];
+    
+    // Example suggestion 1: Extract function
+    if (code.length > 200) {
+      suggestions.push({
+        id: 'extract-function-' + Date.now(),
+        title: 'Extract Repeated Logic into Functions',
+        description: 'The code contains repeated logic that could be extracted into reusable functions.',
+        originalCode: code.slice(0, 100) + '...',
+        refactoredCode: '// Extracted function\nfunction processData(data) {\n  // Logic here\n}\n\n' + code.slice(0, 100) + '...',
+        language: lang,
+        explanation: 'Extracting repeated logic into functions improves code reusability and maintainability.',
+        improvements: [
+          'Reduces code duplication',
+          'Improves readability',
+          'Makes future changes easier to implement'
+        ],
+        difficulty: 'beginner',
+        estimatedTime: 5,
+        tags: ['functions', 'refactoring', 'code-organization']
+      });
+    }
+
+    // Example suggestion 2: Add error handling
+    if (code.includes('fetch(') || code.includes('axios')) {
+      suggestions.push({
+        id: 'add-error-handling-' + Date.now(),
+        title: 'Add Error Handling',
+        description: 'The code makes API calls but lacks proper error handling.',
+        originalCode: code.includes('fetch(') 
+          ? 'fetch(url).then(response => response.json())' 
+          : 'axios.get(url).then(response => setData(response.data))',
+        refactoredCode: code.includes('fetch(') 
+          ? 'fetch(url)\n  .then(response => {\n    if (!response.ok) throw new Error(\'Network response was not ok\');\n    return response.json();\n  })\n  .catch(error => console.error(\'Error fetching data:\', error));'
+          : 'axios.get(url)\n  .then(response => setData(response.data))\n  .catch(error => console.error(\'Error fetching data:\', error));',
+        language: lang,
+        explanation: 'Proper error handling ensures the application can gracefully handle and recover from errors.',
+        improvements: [
+          'Prevents unhandled promise rejections',
+          'Improves user experience with proper error messages',
+          'Makes debugging easier'
+        ],
+        difficulty: 'intermediate',
+        estimatedTime: 10,
+        tags: ['error-handling', 'api', 'async']
+      });
+    }
+
+    // Example suggestion 3: Use modern JavaScript/TypeScript features
+    if (code.includes('function(') && !code.includes('=>')) {
+      suggestions.push({
+        id: 'arrow-functions-' + Date.now(),
+        title: 'Use Arrow Functions',
+        description: 'Consider using arrow functions for cleaner syntax and lexical this binding.',
+        originalCode: 'array.map(function(item) {\n  return item * 2;\n});',
+        refactoredCode: 'array.map(item => item * 2);',
+        language: lang,
+        explanation: 'Arrow functions provide a more concise syntax and automatically bind this lexically.',
+        improvements: [
+          'Cleaner, more readable code',
+          'No need to bind this in callbacks',
+          'Shorter function syntax'
+        ],
+        difficulty: 'beginner',
+        estimatedTime: 3,
+        tags: ['es6', 'syntax', 'modern-js']
+      });
+    }
+
+    return suggestions;
+  }, []);
 
   const handleReview = async () => {
     if (!code.trim()) {
@@ -44,12 +121,58 @@ function App() {
         timestamp: new Date().toISOString(),
       };
 
+      // Generate refactoring suggestions
+      const suggestions = generateRefactoringSuggestions(code, language);
+      setRefactoringSuggestions(suggestions);
+      
       setReviews(prev => [newReview, ...prev]);
     } catch (err) {
       setError('Failed to generate review. Please try again.');
       console.error('Review error:', err);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleApplyRefactoring = async (suggestion: RefactoringSuggestion) => {
+    setIsRefactoring(true);
+    
+    try {
+      // In a real app, this would apply the refactoring to the code
+      // For now, we'll just update the code with the refactored version
+      setCode(suggestion.refactoredCode);
+      
+      // Move the suggestion to the reviews
+      const newReview: CodeReview = {
+        id: `refactor-${Date.now()}`,
+        code: suggestion.refactoredCode,
+        language: suggestion.language,
+        feedback: `Applied refactoring: ${suggestion.title}`,
+        suggestions: [
+          suggestion.description,
+          ...suggestion.improvements
+        ],
+        timestamp: new Date().toISOString(),
+        refactoringSuggestions: [{
+          originalCode: suggestion.originalCode,
+          refactoredCode: suggestion.refactoredCode,
+          explanation: suggestion.explanation,
+          improvements: suggestion.improvements
+        }]
+      };
+      
+      setReviews(prev => [newReview, ...prev]);
+      
+      // Remove the applied suggestion
+      setRefactoringSuggestions(prev => 
+        prev.filter(s => s.id !== suggestion.id)
+      );
+      
+    } catch (err) {
+      setError('Failed to apply refactoring. Please try again.');
+      console.error('Refactoring error:', err);
+    } finally {
+      setIsRefactoring(false);
     }
   };
 
@@ -65,7 +188,10 @@ function App() {
             onCodeChange={handleCodeChange}
             onLanguageChange={handleLanguageChange}
             onReview={handleReview}
+            onApplyRefactoring={handleApplyRefactoring}
+            refactoringSuggestions={refactoringSuggestions}
             isLoading={isLoading}
+            isRefactoring={isRefactoring}
           />
           {error && (
             <div className="mt-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded">
@@ -78,6 +204,7 @@ function App() {
           <ReviewPanel 
             reviews={reviews}
             isLoading={isLoading}
+            language={language}
           />
         </div>
       </main>
